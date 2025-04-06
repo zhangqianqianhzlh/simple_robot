@@ -3,6 +3,7 @@ from PIL import Image
 import io
 import base64
 import yaml
+
 def convert_image_to_webp_base64(input_image_path):
     try:
         with Image.open(input_image_path) as img:
