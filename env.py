@@ -1,0 +1,44 @@
+import yaml
+from models import VLM
+from ai2thor.controller import Controller
+import numpy as np
+import cv2
+import os
+import shutil
+
+
+class ThorEnv(object):
+    def __init__(self, floor_id) -> None:
+       self.controller = Controller(
+            agentMode="default",
+            visibilityDistance=1.5,
+            scene=floor_id,
+
+            # step sizes
+            gridSize=0.25,
+            snapToGrid=True,
+            rotateStepDegrees=90,
+
+            # image modalities
+            renderDepthImage=False,
+            renderInstanceSegmentation=False,
+
+            # camera properties
+            width=300,
+            height=300,
+            fieldOfView=90
+    )
+       
+    def get_last_event(self):
+        return self.controller.last_event
+       
+    def step(self, action):
+        if 'Rotate' in action:
+            event = self.controller.step(action=action, degrees=30)
+        elif 'Done' in action:
+            event = self.get_last_event()
+        else:
+            event = self.controller.step(action=action)
+        
+        return event
+
