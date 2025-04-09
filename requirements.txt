@@ -1,0 +1,6 @@
+ai2thor
+opencv-python
+pillow
+pyyaml
+numpy
+openai
