@@ -81,27 +81,14 @@ def generate_action_proposals_from_image(image_data, min_angle=15, number_size=1
     # Filter points based on minimum angle between them
     filtered_points = filter_points_by_angle(boundary_points, start_point, min_angle=min_angle)
     
-    # Calculate turning degrees for each point
-    action_info = []
-    for i, point in enumerate(filtered_points):
-        turning_degree = calculate_turning_degree(point, start_point)
-        action_info.append({
-            'action_number': i + 1,
-            'turning_degree': round(turning_degree, 1)
-        })
-    
-    # Add the "turn around" option as action 0
-    action_info.insert(0, {
-        'action_number': 0,
-        'turning_degree': 180.0
-    })
-    
-    # Create action visualization image
-    output_image = draw_action_proposals(img_np, filtered_points, start_point, 
+    # Create action visualization image and get the final filtered/numbered action info
+    output_image, action_info = draw_action_proposals(img_np, filtered_points, start_point, 
                                        number_size=number_size, 
                                        navigability_mask=navigability_mask,
                                        min_path_length=min_path_length,
                                        draw_degree=draw_degree)
+    
+    # action_info now contains the correctly numbered and filtered actions
     
     return output_image, action_info
 
@@ -119,7 +106,7 @@ def process_image():
         number_size = data.get('number_size', 15)
         min_path_length = data.get('min_path_length', 50)
         draw_degree = data.get('draw_degree', False)
-        save_image = data.get('save_image', True)
+        save_image = data.get('save_image', False)
         
         # Decode base64 image
         try:
@@ -158,6 +145,16 @@ def process_image():
         _, buffer = cv2.imencode('.jpg', cv2.cvtColor(output_image, cv2.COLOR_RGB2BGR))
         output_base64 = base64.b64encode(buffer).decode('utf-8')
         
+        # print(action_info)
+        # # print all value's type in action_info
+        # for action in action_info:
+        #     if action['boundary_point'] is not None:
+        #         print(type(action['boundary_point'][0]))
+        #         print(type(action['boundary_point'][1]))
+        #         print(type(action['center_position'][0]))
+        #         print(type(action['center_position'][1]))
+        #     print(type(action['turning_degree']))
+
         return jsonify({
             'image': output_base64,
             'actions': action_info
