@@ -25,7 +25,8 @@ if __name__ == "__main__":
                     base_url=llm_config["SiliconCloud"]["base_url"])
     
 
-    base64_image = convert_image_to_webp_base64("views/view_0_RotateLeft.png")
+    # base64_image = convert_image_to_webp_base64("views/view_0_RotateLeft.png")
+    base64_image = convert_image_to_webp_base64("views/view_0_RotateRight.png")
     
     response = client.chat.completions.create(
         # model='Pro/deepseek-ai/DeepSeek-R1',

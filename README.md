@@ -47,7 +47,7 @@ SiliconCloud:
 
 2. Run the main script:
 ```bash
-python main.py
+xvfb-run python main.py
 ```
 
 This will start a navigation session where the robot attempts to find a white fridge according to the instructions in the default scenario.
@@ -67,7 +67,7 @@ target = "find the kitchen table and stop when you see it"
 You can test the vision-language model on individual images:
 
 ```bash
-python test_model.py
+xvfb-run python test_map.py
 ```
 
 ### Using the VLM in Your Own Code

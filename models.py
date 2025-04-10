@@ -39,7 +39,7 @@ class VLM(object):
         
         return base64_str
     
-    def run(self, image_data, model_id, prompt):
+    def run(self, image_data, model_id, prompt, stream=True, temperature=1.0, top_p=0.9, max_tokens=None):
         if type(image_data) is list:
             base64_images = [self.convert_image_to_webp_base64(image) for image in image_data]
             image_contents = [{"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}", "detail":"low"}} for base64_image in base64_images]
@@ -53,7 +53,10 @@ class VLM(object):
         response = self.client.chat.completions.create(
             model=model_id,
             messages=messages,
-            stream=True
+            stream=stream,
+            temperature=temperature,
+            top_p=top_p,
+            max_tokens=max_tokens
         )
 
         # collect the response string from the response
