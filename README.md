@@ -67,7 +67,7 @@ target = "find the kitchen table and stop when you see it"
 You can test the vision-language model on individual images:
 
 ```bash
-xvfb-run python test_map.py
+xvfb-run --server-num=101 --server-args="-screen 0 1280x1024x24"  python test_map.py
 ```
 
 ### Using the VLM in Your Own Code

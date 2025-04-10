@@ -45,7 +45,7 @@ def load_model(model_path):
     
     return model.config.id2label
 
-def generate_action_proposals_from_image(image_data, min_angle=15, number_size=15, min_path_length=50, draw_degree=False):
+def generate_action_proposals_from_image(image_data, min_angle=15, number_size=15, min_path_length=50, draw_degree=False, min_arrow_width=10):
     """Process an image and generate action proposals."""
     global device, processor, model
     
@@ -86,7 +86,8 @@ def generate_action_proposals_from_image(image_data, min_angle=15, number_size=1
                                        number_size=number_size, 
                                        navigability_mask=navigability_mask,
                                        min_path_length=min_path_length,
-                                       draw_degree=draw_degree)
+                                       draw_degree=draw_degree,
+                                       min_arrow_width=min_arrow_width)
     
     # action_info now contains the correctly numbered and filtered actions
     
@@ -107,6 +108,7 @@ def process_image():
         min_path_length = data.get('min_path_length', 50)
         draw_degree = data.get('draw_degree', False)
         save_image = data.get('save_image', False)
+        min_arrow_width = data.get('min_arrow_width', 10)
         
         # Decode base64 image
         try:
@@ -121,7 +123,8 @@ def process_image():
             min_angle=min_angle, 
             number_size=number_size,
             min_path_length=min_path_length,
-            draw_degree=draw_degree
+            draw_degree=draw_degree,
+            min_arrow_width=min_arrow_width
         )
         
         # if save_image is True, save the image

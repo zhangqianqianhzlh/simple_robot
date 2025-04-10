@@ -173,6 +173,6 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 .idea
-views/
+views*/
 views_action_proposals/
 llm.yaml

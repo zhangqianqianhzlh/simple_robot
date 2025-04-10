@@ -57,7 +57,7 @@ class ThorEnvDogView(object):
             rotateStepDegrees=90,    
 
             # image modalities
-            renderDepthImage=False,
+            renderDepthImage=True,
             renderInstanceSegmentation=False,
         )
         self.controller.step("Crouch")
