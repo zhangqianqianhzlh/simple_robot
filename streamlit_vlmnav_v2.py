@@ -282,12 +282,15 @@ Example: {{"reasoning": "The target fridge is clearly visible right in front of 
 
     # Main display area
     main_container = st.container()
+    with st.spinner("Initializing simulation..."):
+        # Create the environment first
+        env = ThorEnvDogView(floor_id)
 
     # Start simulation
     if start_button:
         with st.spinner("Initializing simulation..."):
-            # Create the environment first
-            env = ThorEnvDogView(floor_id)
+            # Reset the environment
+            env.reset(floor_id)
             # Create the agent with the environment
             st.session_state.agent = VLMNavigationAgent(env, model_id, api_url, max_distance_to_move)
             st.session_state.agent.reset()

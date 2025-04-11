@@ -46,8 +46,8 @@ class VLMNavigationAgent:
             "image": image_base64,
             "min_angle": 20,
             "number_size": 30,
-            "min_path_length": 150,
-            "min_arrow_width": 30
+            "min_path_length": 50,
+            "min_arrow_width": 50
         }
         response = requests.post(self.api_url, json=payload)
         return response

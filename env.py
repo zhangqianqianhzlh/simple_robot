@@ -49,7 +49,7 @@ class ThorEnvDogView(object):
             scene=floor_id,
             width=720,
             height=480,
-            fieldOfView=100,
+            fieldOfView=80,
 
             # step sizes
             gridSize=0.25,
@@ -62,7 +62,12 @@ class ThorEnvDogView(object):
         )
         self.controller.step("Crouch")
         self.controller.step("LookDown")
-        
+    
+    def reset(self, floor_id):
+        self.controller.reset(scene=floor_id)
+        self.controller.step("Crouch")
+        self.controller.step("LookDown")
+
     def get_last_event(self):
         return self.controller.last_event
     
