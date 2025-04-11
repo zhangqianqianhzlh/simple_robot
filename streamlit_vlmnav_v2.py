@@ -13,7 +13,10 @@ from env import ThorEnvDogView
 from agent import VLMNavigationAgent
 from PIL import Image, ImageDraw, ImageFont
 import tempfile
+from functools import lru_cache
 
+# Add caching for expensive operations
+@st.cache_data
 def convert_image_to_base64(image):
     """Convert an image to base64 format."""
     _, buffer = cv2.imencode('.jpg', image)
@@ -127,10 +130,12 @@ def execute_action(env, action_number, actions_info):
     event = env.step("MoveAhead")
     return event
 
+@st.cache_data
 def cv2_to_streamlit_image(image):
     """Convert OpenCV image to format suitable for Streamlit display"""
     return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
+@st.cache_data
 def depth_to_heatmap(depth):
     """Convert depth array to heatmap visualization"""
     depth_normalized = cv2.normalize(depth, None, 0, 255, cv2.NORM_MINMAX)
@@ -204,13 +209,13 @@ def main():
     # Floor plan selection
     floor_id = st.sidebar.text_input(
         "Select Floor Plan", 
-        value="FloorPlan10"
+        value="FloorPlan_Train1_5"
     )
     
     # Model selection
     model_id = st.sidebar.text_input(
         "Model ID", 
-        value="Pro/Qwen/Qwen2.5-VL-7B-Instruct"
+        value="Qwen/Qwen2.5-VL-32B-Instruct"
     )
     
     # API URL
@@ -231,21 +236,20 @@ def main():
     # Target description
     target = st.sidebar.text_area(
         "Navigation Target", 
-        value="find the white fridge"
+        value="find the TV"
     )
     
     # Task prompt template
     task_prompt = st.sidebar.text_area(
         "Task Prompt", 
         value="""You are a robot navigating a house. You see an image with numbered paths representing possible directions.
-Your task is to follow these instructions: '{TARGET}' and get close to it.
-Analyze the current view and the available paths ({ACTIONS}).
-Provide a very short reasoning steps and then choose the best path number.
-If you believe the task is complete based on the view, choose 'Done'.
+Your task is to follow these navigation instructions: '{TARGET}'
+First, briefly describe what you see in the current view (e.g., "I see a kitchen with a counter and cabinets").
+Then analyze the available paths ({ACTIONS}) and choose the best path number to follow the instructions.
 If no path seems helpful, choose '0' to turn around.
-Output your response as a JSON object with two keys: "reasoning" (your reasoning) and "action" (the chosen number as a string, 'Done', or '0').
-Example: {{"reasoning": "The target is the fridge. Path 3 seems to lead towards the kitchen area where fridges usually are.", "action": "3"}}
-Example: {{"reasoning": "The target fridge is clearly visible right in front of me.", "action": "Done"}}"""
+Output your response as a JSON object with two keys: "reasoning" (your description and reasoning) and "action" (the chosen number as a string or '0').
+Example: {{"reasoning": "I see a kitchen with a counter and cabinets. The instructions say to go left and then find the fridge. Path 3 leads to the left, which matches the first part of the instructions.", "action": "3"}}
+Example: {{"reasoning": "I see a dead end with no clear paths forward. I should turn around to explore other directions.", "action": "0"}}"""
     )
     
     # Step delay
@@ -279,18 +283,17 @@ Example: {{"reasoning": "The target fridge is clearly visible right in front of 
         st.session_state.agent = None
     if 'vlm_output_str' not in st.session_state:
         st.session_state.vlm_output_str = "No output available."
+    if 'last_step_time' not in st.session_state:
+        st.session_state.last_step_time = time.time()
 
     # Main display area
     main_container = st.container()
-    with st.spinner("Initializing simulation..."):
-        # Create the environment first
-        env = ThorEnvDogView(floor_id)
 
     # Start simulation
     if start_button:
         with st.spinner("Initializing simulation..."):
-            # Reset the environment
-            env.reset(floor_id)
+            # Create the environment first
+            env = ThorEnvDogView(floor_id)
             # Create the agent with the environment
             st.session_state.agent = VLMNavigationAgent(env, model_id, api_url, max_distance_to_move)
             st.session_state.agent.reset()
@@ -311,7 +314,7 @@ Example: {{"reasoning": "The target fridge is clearly visible right in front of 
         main_container.warning("Simulation stopped by user")
 
     # Run simulation steps
-    if st.session_state.running and st.session_state.agent is not None and not st.session_state.agent.completed:
+    if st.session_state.running and st.session_state.agent is not None:
         # Continue until max steps or stopped
         if st.session_state.agent.step_number < max_steps:
             # Create a new container for each step
@@ -323,12 +326,14 @@ Example: {{"reasoning": "The target fridge is clearly visible right in front of 
 
             try:
                 # Execute one step of the navigation
-                augmented_view, actions_info, reasoning, action_chosen, new_view = st.session_state.agent.step(
+                augmented_view, actions_info, reasoning, action_chosen, new_view, is_completed = st.session_state.agent.step(
                     target, task_prompt, max_steps
                 )
 
                 if augmented_view is None:  # Simulation completed or max steps reached
                     st.session_state.running = False
+                    if is_completed:
+                        main_container.success("Task completed successfully!")
                     return
 
                 # Store the VLM output string
@@ -367,14 +372,30 @@ Example: {{"reasoning": "The target fridge is clearly visible right in front of 
                     step_container.info(reasoning)
                     step_container.text(f"VLM Chose Action (from JSON): {action_chosen}")
 
+                    # Display completion check information if available
+                    if hasattr(st.session_state.agent.memory, 'completion_checks') and st.session_state.agent.memory.completion_checks:
+                        latest_check = st.session_state.agent.memory.completion_checks[-1]
+                        step_container.markdown("**Latest Task Completion Check:**")
+                        status = "✅ Completed" if latest_check['completed'] else "❌ Not Completed"
+                        step_container.markdown(f"Status: {status}")
+                        step_container.markdown(f"Reasoning: {latest_check['reasoning']}")
+
                 if new_view is not None:
                     with col2:
                         step_container.image(cv2_to_streamlit_image(new_view), caption=f"After Action {action_chosen}", use_container_width=True)
                 else:
                     step_container.warning("No new view available - action may have failed")
 
-                time.sleep(step_delay)
-                st.rerun()
+                # Calculate time since last step and sleep if needed
+                current_time = time.time()
+                elapsed = current_time - st.session_state.last_step_time
+                if elapsed < step_delay:
+                    time.sleep(step_delay - elapsed)
+                st.session_state.last_step_time = time.time()
+                
+                # Only rerun if we're not at max steps
+                if st.session_state.agent.step_number < max_steps:
+                    st.rerun()
 
             except Exception as e:
                 step_container.error(f"Error during simulation step: {str(e)}")
@@ -413,23 +434,46 @@ Example: {{"reasoning": "The target fridge is clearly visible right in front of 
                         os.unlink(video_path)  # Clean up temporary file
 
         with st.expander("Action History"):
-            for i, (action_str, image) in enumerate(zip(
+            # Get the minimum length to avoid index errors
+            min_length = min(len(st.session_state.agent.action_memory), 
+                           len(st.session_state.agent.augmented_images),
+                           len(st.session_state.agent.complete_images) - 1)  # Subtract 1 from complete_images
+            
+            for i, (action_str, augmented_img, complete_img) in enumerate(zip(
                 st.session_state.agent.action_memory[start_index:end_index],
-                st.session_state.agent.augmented_images[start_index:end_index]
+                st.session_state.agent.augmented_images[start_index:end_index],
+                st.session_state.agent.complete_images[start_index:end_index]
             ), start=start_index):
-                # Create two columns for each step
-                col1, col2 = st.columns(2)
+                # Create three columns for each step
+                col1, col2, col3 = st.columns(3)
                 
                 # Display the action text
                 st.text(f"Step {i}: {action_str}")
                 
-                # Display augmented view and depth map side by side
+                # Display completion check if available for this step
+                if hasattr(st.session_state.agent.memory, 'completion_checks'):
+                    for check in st.session_state.agent.memory.completion_checks:
+                        if check['step_number'] == i:
+                            status = "✅ Completed" if check['completed'] else "❌ Not Completed"
+                            st.markdown(f"Task Completion Check: {status}")
+                            st.markdown(f"Reasoning: {check['reasoning']}")
+                            break
+                
+                # Display augmented view, complete view, and depth map side by side
                 with col1:
-                    st.image(cv2_to_streamlit_image(image), caption=f"Augmented View for Step {i}", width=300)
+                    st.image(cv2_to_streamlit_image(augmented_img), caption=f"Augmented View for Step {i}", width=300)
                 with col2:
+                    st.image(cv2_to_streamlit_image(complete_img), caption=f"Complete View for Step {i}", width=300)
+                with col3:
                     if hasattr(st.session_state.agent, 'depth_memory') and i < len(st.session_state.agent.depth_memory):
                         depth_heatmap = depth_to_heatmap(st.session_state.agent.depth_memory[i])
                         st.image(cv2_to_streamlit_image(depth_heatmap), caption=f"Depth Map for Step {i}", width=300)
+            
+            # # Display the final complete view if it exists
+            # if len(st.session_state.agent.complete_images) > min_length:
+            #     final_complete_img = st.session_state.agent.complete_images[-1]
+            #     st.text("Final View (After Task Completion)")
+            #     st.image(cv2_to_streamlit_image(final_complete_img), caption="Final Complete View", width=300)
 
     # Example of folding VLM raw output
     with st.expander("VLM Raw Output"):
