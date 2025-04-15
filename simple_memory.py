@@ -1,6 +1,8 @@
 import numpy as np
 from typing import List, Dict, Any, Optional
 import json
+import matplotlib.pyplot as plt
+import cv2
 
 class SimpleMemory:
     def __init__(self, max_memory_size: int = 10):
@@ -15,6 +17,9 @@ class SimpleMemory:
         self.explored_areas = set()  # Track explored areas to avoid revisiting
         self.repeating_pattern_threshold = 3  # Number of repeated actions to consider as a pattern
         self.completion_checks: List[Dict[str, Any]] = []  # Store task completion checks
+        self.location_history: List[Dict[str, Any]] = []
+
+
         
     def add_action(self, action_info: Dict[str, Any]) -> None:
         """
@@ -30,7 +35,19 @@ class SimpleMemory:
         # Keep only the most recent actions
         if len(self.action_history) > self.max_memory_size:
             self.action_history.pop(0)
-            
+
+    def add_location(self, location: List[float], step_number: int) -> None:
+        """
+        添加一个新位置到位置历史记录中
+        
+        Args:
+            location: 包含 [x, y, z] 坐标的列表
+        """
+        self.location_history.append({
+            "location": location,
+            "step_number": step_number
+        })
+
     def add_completion_check(self, check_info: Dict[str, Any]) -> None:
         """
         Add a task completion check to the memory.
@@ -116,3 +133,105 @@ class SimpleMemory:
         self.action_history = []
         self.explored_areas = set()
         self.completion_checks = []
+
+    def draw_map(self) -> np.ndarray:
+        """
+        根据action_history绘制机器人运动轨迹图，返回numpy数组格式的图像
+        
+        Returns:
+            np.ndarray: BGR格式的图像数组，可直接用于cv2.imwrite
+        """
+        # 初始化起始位置
+        current_pos = np.array([0, 0, 0])
+        positions = [current_pos.copy()]  # 用于存储所有位置
+        
+        print(self.action_history)
+        print(self.location_history)
+        print("*"*50)
+        # 从action_history中提取位置信息
+        for action in self.action_history:
+            print(action)
+            if 'location' in action:
+                pos = np.array(action['location'])
+                positions.append(pos)
+        
+        # 转换位置列表为numpy数组，便于处理
+        positions = np.array(positions)
+
+        print(positions)
+        
+        # 创建图形
+        fig = plt.figure(figsize=(10, 10))
+        ax = fig.add_subplot(111)
+        
+        # 绘制轨迹
+        ax.plot(positions[:, 0], positions[:, 1], 'b-', label='path', linewidth=2)
+        
+        # 绘制所有经过的点
+        ax.scatter(positions[1:-1, 0], positions[1:-1, 1], c='yellow', marker='o', s=50, label='points')
+        
+        # 特别标记起点和终点
+        ax.scatter(positions[0, 0], positions[0, 1], c='g', marker='o', s=100, label='starting point')
+        ax.scatter(positions[-1, 0], positions[-1, 1], c='r', marker='x', s=100, label='current position')
+        
+        # 添加点的编号
+        for i, pos in enumerate(positions):
+            ax.annotate(f'{i}', (pos[0], pos[1]), xytext=(5, 5), textcoords='offset points')
+        
+        # 计算坐标范围
+        if len(positions) > 1:
+            x_min, x_max = positions[:, 0].min(), positions[:, 0].max()
+            y_min, y_max = positions[:, 1].min(), positions[:, 1].max()
+        else:
+            # 如果只有一个点，以该点为中心创建范围
+            x_min, x_max = positions[0, 0] - 1, positions[0, 0] + 1
+            y_min, y_max = positions[0, 1] - 1, positions[0, 1] + 1
+        
+        # 添加边距（坐标范围的10%）
+        x_margin = max((x_max - x_min) * 0.1, 0.2)  # 确保至少有0.2的边距
+        y_margin = max((y_max - y_min) * 0.1, 0.2)
+        
+        # 扩展坐标范围，确保至少是2*2的正方形
+        x_range = max(x_max - x_min + 2 * x_margin, 2.0)
+        y_range = max(y_max - y_min + 2 * y_margin, 2.0)
+        
+        # 确保是正方形：取x和y范围的较大值
+        square_range = max(x_range, y_range)
+        
+        # 计算新的x和y范围的中心点
+        x_center = (x_max + x_min) / 2
+        y_center = (y_max + y_min) / 2
+        
+        # 根据中心点和正方形范围计算新的边界
+        new_x_min = x_center - square_range / 2
+        new_x_max = x_center + square_range / 2
+        new_y_min = y_center - square_range / 2
+        new_y_max = y_center + square_range / 2
+        
+        # 设置显示范围为正方形
+        ax.set_xlim(new_x_min, new_x_max)
+        ax.set_ylim(new_y_min, new_y_max)
+        
+        # 设置图形属性
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_title('Robot Path')
+        ax.grid(True)
+        ax.legend()
+        
+        # 保持坐标轴比例相等
+        ax.set_aspect('equal')
+        
+        # 将matplotlib图形转换为numpy数组
+        fig.canvas.draw()
+        
+        # 获取图形的RGB数据 (使用新的API)
+        img_data = np.asarray(fig.canvas.buffer_rgba())
+        
+        # 转换RGBA为RGB
+        img_data = cv2.cvtColor(img_data, cv2.COLOR_RGBA2BGR)
+        
+        # 关闭matplotlib图形，释放内存
+        plt.close(fig)
+        
+        return img_data

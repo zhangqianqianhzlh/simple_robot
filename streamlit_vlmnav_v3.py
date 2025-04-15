@@ -11,7 +11,7 @@ import re # Import the regex module
 from models import VLM
 from env import ThorEnvDogView
 from agent import VLMNavigationAgent
-from agent_wo_m import VLMNavigationAgentNoMemory
+from agent2 import VLMNavigationAgent2
 from PIL import Image, ImageDraw, ImageFont
 import tempfile
 from functools import lru_cache
@@ -290,9 +290,12 @@ Example: {{"reasoning": "I see a dead end with no clear paths forward. I should 
             with steps_container:
                 try:
                     # 执行导航的一个步骤
+                    print(f"before memory: {st.session_state.agent.memory.location_history}")
                     augmented_view, actions_info, reasoning, action_chosen, new_view, is_completed = st.session_state.agent.step(
                         target, task_prompt, max_steps
                     )
+                    print(f"after memory: {st.session_state.agent.memory.location_history}")
+                    st.text(st.session_state.agent.location)
 
                     if augmented_view is None:  # 模拟结束或达到最大步骤
                         print(f" task ended at step {st.session_state.agent.step_number}")
@@ -376,6 +379,12 @@ Example: {{"reasoning": "I see a dead end with no clear paths forward. I should 
                         if new_view is not None:
                             new_view_path = os.path.join(run_folder, f"{step_prefix}new_view.jpg")
                             cv2.imwrite(new_view_path, new_view)
+
+                        #update the location map and save it
+                        new_map = st.session_state.agent.memory.draw_map()
+                        map_path = os.path.join(run_folder, f"{step_prefix}map.jpg")
+                        cv2.imwrite(map_path, new_map)
+
                         
                         # 保存VLM输出和动作信息
                         step_info = {

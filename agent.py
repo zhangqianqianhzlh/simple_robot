@@ -11,6 +11,7 @@ from models import VLM
 from env import ThorEnvDogView
 # from memory import NavigationMemory
 from simple_memory import SimpleMemory
+import math
 
 class VLMNavigationAgent:
     def __init__(self, env, model_id="Pro/Qwen/Qwen2.5-VL-7B-Instruct", api_url="http://10.8.25.28:8075/generate_action_proposals", max_distance_to_move=1.0):
@@ -33,6 +34,7 @@ class VLMNavigationAgent:
         self.last_n_for_summary = 1
         self.last_n_for_done = 1  # Number of recent actions/images to consider for task completion check
         self.setup_views_directory()
+        self.location = [0, 0, 0]  # x, z, and y for direction
 
     def setup_views_directory(self):
         """Ensure the views directory is ready for storing images."""
@@ -97,7 +99,6 @@ class VLMNavigationAgent:
         except json.JSONDecodeError:
             raise Exception("Failed to parse VLM output as JSON.")
         return reasoning, action_chosen
-
     def execute_action(self, action_number, actions_info):
         """
         Execute the chosen action by rotating to the appropriate degree and moving forward
@@ -113,6 +114,7 @@ class VLMNavigationAgent:
         # If action is 0, turn around 180 degrees
         if action_number == 0:
             event = self.env.step("RotateRight", degrees=180)
+            self.update_location("RotateRight", degrees=180)
             return event
         
         # Otherwise, rotate to the specific degree and move forward
@@ -126,6 +128,7 @@ class VLMNavigationAgent:
         
         # Execute the rotation
         event = self.env.step(rotation_action, degrees=abs(degree))
+        self.update_location(rotation_action, degrees=abs(degree))
         
         # Calculate move distance based on boundary distance
         if action_info["boundary_point"] is not None and self.depth is not None:
@@ -134,10 +137,13 @@ class VLMNavigationAgent:
             move_distance = min(2/3 * boundary_distance, self.max_distance_to_move)
             # Move forward with calculated distance
             event = self.env.step("MoveAhead", magnitude=move_distance)
+            self.update_location("MoveAhead", magnitude=move_distance)
         else:
             # If no boundary point or depth info, use default movement
             event = self.env.step("MoveAhead")
+            self.update_location("MoveAhead", magnitude=1.0)  # 使用默认移动距离1.0
             
+        return event
         return event
 
     def reset(self):
@@ -358,3 +364,20 @@ class VLMNavigationAgent:
         except Exception as e:
             print(f"Exception in step: {str(e)}")
             return None, None, f"Error during step: {str(e)}", None, None, False
+
+    def update_location(self, action, degrees=None, magnitude=None):
+        """
+        更新机器人的位置信息
+        self.location = [x, z, direction]
+        x, z: 平面坐标
+        direction: 朝向角度（0度表示初始方向，顺时针为正）
+        """
+        if action == "RotateRight":
+            self.location[2] = (self.location[2] + degrees) % 360
+        elif action == "RotateLeft":
+            self.location[2] = (self.location[2] - degrees) % 360
+        elif action == "MoveAhead":
+            # 根据当前朝向计算位置变化
+            angle_rad = math.radians(self.location[2])
+            self.location[0] += magnitude * math.cos(angle_rad)  # x坐标变化
+            self.location[1] += magnitude * math.sin(angle_rad)  # z坐标变化
