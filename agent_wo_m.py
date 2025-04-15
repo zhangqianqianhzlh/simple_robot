@@ -12,7 +12,7 @@ from env import ThorEnvDogView
 # from memory import NavigationMemory
 from simple_memory import SimpleMemory
 
-class VLMNavigationAgent:
+class VLMNavigationAgentNoMemory:
     def __init__(self, env, model_id="Pro/Qwen/Qwen2.5-VL-7B-Instruct", api_url="http://10.8.25.28:8075/generate_action_proposals", max_distance_to_move=1.0):
         self.model = VLM("llm.yaml")
         self.env = env
@@ -30,7 +30,7 @@ class VLMNavigationAgent:
         self.last_actions_info = None
         self.depth_memory = []
         self.memory = SimpleMemory()
-        self.last_n_for_summary = 1
+        self.last_n_for_summary = 0 # Number of recent actions/images to consider for memory summary， 0 if no memory
         self.last_n_for_done = 1  # Number of recent actions/images to consider for task completion check
         self.setup_views_directory()
 
@@ -98,6 +98,7 @@ class VLMNavigationAgent:
             raise Exception("Failed to parse VLM output as JSON.")
         return reasoning, action_chosen
 
+    
     def execute_action(self, action_number, actions_info):
         """
         Execute the chosen action by rotating to the appropriate degree and moving forward
@@ -137,7 +138,10 @@ class VLMNavigationAgent:
         else:
             # If no boundary point or depth info, use default movement
             event = self.env.step("MoveAhead")
-            
+
+        if event is None:
+            print("Failed to execute action")
+            print(f"event: {event}")
         return event
 
     def reset(self):
@@ -256,9 +260,9 @@ class VLMNavigationAgent:
             # First check if task is completed
             is_completed, completion_reasoning = self.check_task_completion(target, self.view)
             if is_completed:
-                print(f"Task completed: {completion_reasoning}")
+                print(f"Task completed at the start of step {self.step_number}: {completion_reasoning}")
                 self.completed = True
-                self.step_number += 1
+                # self.step_number += 1
                 self.augmented_images.append(self.view)
                 self.action_memory.append(f"Done (Reasoning: {completion_reasoning})")
                 self.complete_images.append(self.view)  # Store final complete view
@@ -278,25 +282,32 @@ class VLMNavigationAgent:
             extended_available_actions = available_actions + ['0']  # Add '0' for turning around
             actions_str = ", ".join(extended_available_actions)
 
-            # Get memory summary for context
-            memory_summary = self.memory.get_memory_summary(last_n=self.last_n_for_summary)
 
-            # replace "{TARGET}" and "{ACTIONS}" in the task prompt with the target and actions_str
-            task_prompt = task_prompt.replace("{TARGET}", target).replace("{ACTIONS}", actions_str)
+            if self.last_n_for_summary > 0:
+                # Get memory summary for context
+                memory_summary = self.memory.get_memory_summary(last_n=self.last_n_for_summary)
+
+                # replace "{TARGET}" and "{ACTIONS}" in the task prompt with the target and actions_str
+                task_prompt = task_prompt.replace("{TARGET}", target).replace("{ACTIONS}", actions_str)
+
+                
+                # Format the prompt with memory context and target
+                enhanced_prompt = f"""
+                {task_prompt}
+                
+                Memory Context:
+                {memory_summary}
+                
+                Based on this context and the goal of reaching {target}, choose the most appropriate action from: {actions_str}
+                Consider avoiding repeating patterns and previously visited areas.
+                """
             
-            # Format the prompt with memory context and target
-            enhanced_prompt = f"""
-            {task_prompt}
+                print("Getting VLM output with memory context...")
+                self.vlm_output_str = self.model.run([augmented_view], self.model_id, enhanced_prompt)
+            else:
+                task_prompt = task_prompt.replace("{TARGET}", target).replace("{ACTIONS}", actions_str)
+                self.vlm_output_str = self.model.run([augmented_view], self.model_id, task_prompt)
             
-            Memory Context:
-            {memory_summary}
-            
-            Based on this context and the goal of reaching {target}, choose the most appropriate action from: {actions_str}
-            Consider avoiding repeating patterns and previously visited areas.
-            """
-            
-            print("Getting VLM output with memory context...")
-            self.vlm_output_str = self.model.run([augmented_view], self.model_id, enhanced_prompt)
             print(f"VLM output: {self.vlm_output_str}")
             reasoning, action_chosen = self.parse_vlm_output(self.vlm_output_str)
 
@@ -314,7 +325,7 @@ class VLMNavigationAgent:
                     if action_number in recent_actions:
                         print(f"Warning: Chosen action {action_number} is part of repeating pattern. Selecting random alternative.")
                         # Get all valid actions except the repeating ones
-                        alternative_actions = [a for a in valid_action_numbers if a not in recent_actions]
+                        alternative_actions = [a for a in valid_action_numbers if a not in recent_actions and a != 0]
                         if alternative_actions:  # If there are alternatives
                             action_number = np.random.choice(alternative_actions)
                             reasoning = f"Randomly selected alternative action {action_number} to break repeating pattern"
@@ -332,7 +343,14 @@ class VLMNavigationAgent:
                     return augmented_view, actions_info, "Failed to execute action", None, None, False
                 if not event.metadata['lastActionSuccess']:
                     print(f"Action failed: {event.metadata['errorMessage']}")
-                    return augmented_view, actions_info, f"Action failed: {event.metadata['errorMessage']}", None, None, False
+                    print(f"Action failed for action {action_number} and actions_info: {actions_info}")
+                    try:
+                        print("Action failed, turn around 180 degrees")
+                        event = self.env.step( "RotateLeft", degrees=180)
+                        print(f"Event after turning around: {event}")
+                        reasoning = "Action failed, turned around 180 degrees"
+                    except:
+                        return augmented_view, actions_info, f"Action failed: {event.metadata['errorMessage']}", None, None, False
 
                 self.action_memory.append(f"Action {action_number} (Reasoning: {reasoning})")
                 self.augmented_images.append(augmented_view)

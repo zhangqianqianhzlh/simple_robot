@@ -70,6 +70,7 @@ class VLM(object):
 
 if __name__ == "__main__":
     vlm = VLM("llm.yaml")
-    print(vlm.run("views/view_0_RotateLeft.png", "Qwen/Qwen2.5-VL-32B-Instruct", "Describe the image in 10 words"))
-    print(vlm.run(["views/view_0_RotateLeft.png", "views/view_0_RotateLeft.png"], "Qwen/Qwen2.5-VL-32B-Instruct", "Describe the difference between the two images in 10 words"))
+    # print(vlm.run("views/view_0_RotateLeft.png", "Qwen/Qwen2.5-VL-3B-Instruct", "Describe the image in 10 words"))
+    # print(vlm.run(["views/view_0_RotateLeft.png", "views/view_0_RotateLeft.png"], "Qwen/Qwen2.5-VL-3B-Instruct", "Describe the difference between the two images in 10 words"))
+    print(vlm.run("/training/zhang_qianqian/proj/robot_dog/simple_robot/playground/views/view_init.png", "qwen2.5-vl-32b-instruct", "Describe the image in 10 words"))
 
